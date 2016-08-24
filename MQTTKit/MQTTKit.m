@@ -9,6 +9,7 @@
 
 #import "MQTTKit.h"
 #import "mosquitto.h"
+#import "messages_mosq.h"
 
 #if 0 // set to 1 to enable logs
 
@@ -92,7 +93,7 @@ static void on_disconnect(struct mosquitto *mosq, void *obj, int rc)
 {
     MQTTClient* client = (__bridge MQTTClient*)obj;
     LogDebug(@"[%@] on_disconnect rc = %d", client.clientID, rc);
-    [client.publishHandlers removeAllObjects];
+    //[client.publishHandlers removeAllObjects];
     [client.subscriptionHandlers removeAllObjects];
     [client.unsubscriptionHandlers removeAllObjects];
 
@@ -210,11 +211,6 @@ static void on_unsubscribe(struct mosquitto *mosq, void *obj, int message_id)
     return self;
 }
 
-- (void) setMaxInflightMessages:(NSUInteger)maxInflightMessages
-{
-    mosquitto_max_inflight_messages_set(mosq, (unsigned int)maxInflightMessages);
-}
-
 - (void) setMessageRetry: (NSUInteger)seconds
 {
     mosquitto_message_retry_set(mosq, (unsigned int)seconds);
@@ -244,10 +240,9 @@ static void on_unsubscribe(struct mosquitto *mosq, void *obj, int message_id)
     // FIXME: check for errors
     mosquitto_username_pw_set(mosq, cstrUsername, cstrPassword);
     mosquitto_reconnect_delay_set(mosq, self.reconnectDelay, self.reconnectDelayMax, self.reconnectExponentialBackoff);
-
-    mosquitto_connect(mosq, cstrHost, self.port, self.keepAlive);
     
     dispatch_async(self.queue, ^{
+        mosquitto_connect(mosq, cstrHost, self.port, self.keepAlive);
         LogDebug(@"start mosquitto loop on %@", self.queue);
         mosquitto_loop_forever(mosq, -1, 1);
         LogDebug(@"end mosquitto loop on %@", self.queue);
@@ -277,7 +272,7 @@ static void on_unsubscribe(struct mosquitto *mosq, void *obj, int message_id)
              retain:(BOOL)retain
 {
     const char* cstrTopic = [willTopic cStringUsingEncoding:NSUTF8StringEncoding];
-    mosquitto_will_set(mosq, cstrTopic, payload.length, payload.bytes, willQos, retain);
+    mosquitto_will_set(mosq, cstrTopic, (int)payload.length, payload.bytes, willQos, retain);
 }
 
 - (void)setWill:(NSString *)payload
@@ -308,7 +303,7 @@ static void on_unsubscribe(struct mosquitto *mosq, void *obj, int message_id)
         [self.publishHandlers setObject:completionHandler forKey:[NSNumber numberWithInt:0]];
     }
     int mid;
-    mosquitto_publish(mosq, &mid, cstrTopic, payload.length, payload.bytes, qos, retain);
+    mosquitto_publish(mosq, &mid, cstrTopic, (int)payload.length, payload.bytes, qos, retain);
     if (completionHandler) {
         if (qos == 0) {
             completionHandler(mid);
